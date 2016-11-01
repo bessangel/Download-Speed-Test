@@ -1,0 +1,13 @@
+{
+  "name": "src",
+  "homepage": "https://github.com/hyjk2000/Download-Speed-Test",
+  "authors": [
+    "Alexandr Mitev <alexandr.mitev@gmal.com>"
+  ],
+  "description": "",
+  "main": "",
+  "license": "MIT",
+  "dependencies": {
+    "firebug-lite": "^1.5.1"
+  }
+}

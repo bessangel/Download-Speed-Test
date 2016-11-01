@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html debug="false">
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no">
@@ -15,9 +15,17 @@
 	#start:not([disabled]):hover { background:#DDD; }
 	#start:not([disabled]):active { background:#AAA; }
 	</style>
+
+<script src="bower_components/firebug-lite/build/firebug-lite.js"></script>
+<script>
+  // Debug fix for PROD, comment out when use firebug-lite
+//   console = {    log : function(){},    error : function(){}  };
+</script>
+
 </head>
 <body>
 <h1>Speed Test</h1>
+<div id="waitAlert" style="color:blue; font-weight:bold;">Test started. Please wait ...</div>
 <p>
 	<progress id="progress" max="5" value="0"></progress><br>
 	<span id="speed"></span>
@@ -27,21 +35,17 @@
 	<option value="upload">Upload</option>
 </select>
 <select id="size">
-	<option value="512">512KB</option>
-	<option value="1024">1MB</option>
-	<option value="2048">2MB</option>
-	<option value="4096" selected>4MB</option>
-	<option value="8192">8MB</option>
-	<option value="16384">16MB</option>
-	<option value="32768">32MB</option>
+	<option value="1024" selected>1MB</option>
+	<option value="10240">10MB</option>
+	<option value="102400">100MB</option>
 </select>
 for
 <select id="count">
-	<option value="1">1</option>
+	<option value="1" selected>1</option>
 	<option value="2">2</option>
 	<option value="3">3</option>
 	<option value="4">4</option>
-	<option value="5" selected>5</option>
+	<option value="5">5</option>
 	<option value="6">6</option>
 	<option value="7">7</option>
 	<option value="8">8</option>
@@ -69,10 +73,13 @@ var el = {
 	size: document.getElementById("size"),
 	count: document.getElementById("count"),
 	runs: document.getElementById("runs"),
-	start: document.getElementById("start")
+	start: document.getElementById("start"),
+	waitAlert: document.getElementById("waitAlert")
 };
 var latencyResults = [];
 var speedResults = [];
+var user = "_";
+el.waitAlert.style.display= "none";
 
 el.start.onclick = function (e) {
 	latencyResults = [];
@@ -85,6 +92,7 @@ el.start.onclick = function (e) {
 	el.speed.textContent = "";
 	this.disabled = true;
 
+	try{
 	switch (el.direction.value) {
 		case "download":
 			getDownload();
@@ -93,21 +101,30 @@ el.start.onclick = function (e) {
 			postUpload();
 			break;
 	}
+	} catch(e){
+	console.error(e)
+	}
 }
 
+function logToServer(op, avr, speed) {
+	var xhr = new XMLHttpRequest();
+	xhr.open("get", "./logger.php?user=" + user +"&op="+op +"&avr=" + prettyLatency(avr) + "&speed=" + prettySpeed(speed), true);
+	xhr.send("lala");
+}
 function getDownload() {
 	console.log("getDownload() call: " + el.progress.value);
 	var xhr = new XMLHttpRequest();
 	xhr.open("get", "./payload.php?size=" + el.size.value, true);
-	var startTime = new Date().getTime(), downloadStartTime;
+	var startTime = new Date().getTime();
+	var downloadStartTime = startTime;
 	xhr.onloadstart = function () {
 		downloadStartTime = new Date().getTime();
+		console.log('Init latency downloadStartTime')
 	}
-	xhr.onload = function () {
+	xhr.onload = function () {		
 		var latency = downloadStartTime - startTime;
 		var downloadTime = (new Date().getTime() - downloadStartTime) / 1000;
 		var speed = el.size.value / downloadTime;
-
 		latencyResults.push(latency);
 		speedResults.push(speed);
 
@@ -115,30 +132,36 @@ function getDownload() {
 		li.textContent = prettyLatency(latency) + " " + prettySpeed(speed);
 		el.runs.appendChild(li);
 		el.speed.textContent = "Average: " + prettyLatency(latencyResults.average()) + " " + prettySpeed(speedResults.average());
-
+		
+		logToServer("download",latency, speed);
+		
 		if (++el.progress.value < el.count.value) {
 			getDownload();
 		} else {
 			el.start.disabled = false;
+			el.waitAlert.style.display= "none";
 		}
 	}
 	xhr.onerror = function () {
 		console.log("getDownload() error: " + xhr.statusText);
 		setTimeout(getDownload, 5000);
 	}
+	el.waitAlert.style.display= "block";
 	xhr.send();
 }
 
 function postUpload() {
 	console.log("postUpload() call:" + el.progress.value);
-	var blob = makeBlob(el.size.value);
+	var blob = Array(el.size.value*1024).join("a")
+// 	var blob = makeBlob(el.size.value);
 	var xhr = new XMLHttpRequest();
 	xhr.open("post", "./receiver.php", true);
-	var startTime = new Date().getTime(), uploadStartTime;
-	xhr.upload.onloadstart = function () {
+	var startTime = new Date().getTime();
+	var uploadStartTime = startTime;
+	xhr.onloadstart = function () {
 		uploadStartTime = new Date().getTime();
 	}
-	xhr.upload.onload = function () {
+	xhr.onload = function () {
 		var latency = uploadStartTime - startTime;
 		var uploadTime = (new Date().getTime() - uploadStartTime) / 1000;
 		var speed = el.size.value / uploadTime;
@@ -151,16 +174,19 @@ function postUpload() {
 		el.runs.appendChild(li);
 		el.speed.textContent = "Average: " + prettyLatency(latencyResults.average()) + " " + prettySpeed(speedResults.average());
 
+		logToServer("upload",latency, speed);
 		if (++el.progress.value < el.count.value) {
 			postUpload();
 		} else {
 			el.start.disabled = false;
+			el.waitAlert.style.display= "none";
 		}
 	}
-	xhr.upload.onerror = function () {
+	xhr.onerror = function () {
 		console.log("postUpload() error: " + xhr.statusText);
 		setTimeout(postUpload, 5000);
 	}
+	el.waitAlert.style.display= "block";
 	xhr.send(blob);
 }
 
